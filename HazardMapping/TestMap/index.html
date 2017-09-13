@@ -1,0 +1,435 @@
+<html>
+<head>
+  <title>Hazard Management For Alaska!</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.0.1/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.0.1/dist/leaflet.js"></script>
+  <script type="text/javascript" src="js/leaflet.ajax.js"></script>
+  <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+  <link rel="stylesheet" href="css/leaflet.contextmenu.css"/>
+  <script type="text/javascript" src="js/leaflet.contextmenu.js"></script>
+  <script type="text/javascript" src="js/Map.ContextMenu.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta http-equiv=”Pragma” content=”no-cache”>
+  <meta http-equiv=”Expires” content=”-1″>
+  <meta http-equiv=”CACHE-CONTROL” content=”NO-CACHE”>
+
+<!-- Side Bar --> 
+	<script src="js/L.Control.Sidebar.js"></script>
+	<link rel="stylesheet" href="css/L.Control.Sidebar.css"/>
+	
+<!-- MarkerCluster -->
+  <script src="https://unpkg.com/leaflet.markercluster@1.0.0/dist/leaflet.markercluster.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.0.0/dist/MarkerCluster.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.0.0/dist/MarkerCluster.Default.css"/>
+
+<!-- Search Function -->
+  <script src="js/leaflet-search.js"></script>
+  <link rel="stylesheet" href="css/leaflet-search.css" />
+  <link rel="shortcut icon" href="">
+	
+<!-- Custom css -->
+
+  <style>
+    #map{ height: 99% }
+  </style>
+</head>
+<body>
+	<div id="sidebar">
+	<center><h1><b>Add A Hazard</b></h1></center>
+	<form name="insert" action="addhazard.php" method="POST" >
+        <table>
+          <b>Type:</b> </br></br>
+          <input type="radio" name="ecplus_fie" value="Open Pit"> Open Pit
+          <input type="radio" name="ecplus_fie" value="Electric"> Electric
+          <input type="radio" name="ecplus_fie" value="Sewage"> Sewage
+          <input type="radio" name="ecplus_fie" value="Garbage"> Garbage
+          <input type="radio" name="ecplus_fie" checked= true value="Other"> Other </br></br>
+
+          <b><p>Latitude:</b></p>  <input type="text" value="" id="lat" name="lat" readonly></br>
+          <b><p>Longitude:</b></p> <input type="text" value="" id="lng" name="lng" readonly></br></br>
+
+          <input type="submit" name="submitinsert" value ="Submit" />
+        </table>
+      </form>
+	</div>
+    <div id="map"></div>
+    </br>
+   
+
+
+    <script>
+
+    var xhr = new XMLHttpRequest({mozSystem: true});
+
+
+    // initialize the map
+    var map = L.map('map', {
+      contextmenu: true,
+      contextmenuWidth: 140,
+      contextmenuItems: [{
+          text: 'Show Coordinates',
+          callback: showCoordinates
+      }, {
+          text: 'Add Hazard',
+          callback: addHazard
+      }]
+    }).setView([-25.729792, 28.445576], 16);
+
+    // load a tile layer
+    var OpenStreetMap =L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {
+          attribution: 'Map data <a href="http://openstreetmap.org">OpenStreetMap</a> contributors',
+          maxZoom: 20,
+          minZoom: 11
+        });
+    OpenStreetMap.addTo(map)
+
+    var OpenTopoMap = L.tileLayer('http://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        {
+            maxZoom: 20,
+            attribution: 'Map data: &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+        });
+
+    var OpenStreetMap_BlackAndWhite = L.tileLayer('http://{s}.tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png', {
+            maxZoom: 20,
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        });
+
+    var Esri_WorldImagery = L.tileLayer('http://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+		   maxZoom: 20,
+	       attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        });
+
+    var roads = L.geoJson();
+    var dwellings = L.geoJson();
+    var hazards = L.geoJson();
+	  var hazardcluster = L.markerClusterGroup();
+
+	  var POI = L.geoJson();
+
+    //Load Roads from Geoserver
+    var geoJsonUrl2 ="http://url/geoserver/mapchasers/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=mapchasers:roads_prj&outputFormat=text/javascript&format_options=callback:formatJson";
+    $.ajax({
+        jsonp : false,
+        url: geoJsonUrl2,
+        dataType: 'jsonp',
+        jsonpCallback: 'formatJson',
+        success: handleJson2
+    });
+
+    function handleJson2(data) {
+        L.geoJson(data, {
+            style : function(feature) {
+                return {color: "#FFFFFF" , fillOpacity : 0.3};
+        },
+            onEachFeature: function (feature, my_Layer2) {
+						        my_Layer2.bindPopup('<b><center>ROAD INFORMATION</b>'+ '<center> Road or Footpath? ' + feature.properties.type + '<center> Is It Safe? ' + feature.properties.safe);
+        }
+        }).addTo(roads).bringToBack();
+    }
+    //Load Dwellings GeoJson from Geoserver
+    var geoJsonUrl ="http://url/geoserver/mapchasers/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=mapchasers:dwellings&outputFormat=text/javascript&format_options=callback:JsonDwelling";
+
+    $.ajax({
+        jsonp : false,
+        url: geoJsonUrl,
+        dataType: 'jsonp',
+        jsonpCallback: 'JsonDwelling',
+        success: handleJson
+    });
+
+    function handleJson(data) {
+        L.geoJson(data, {
+            onEachFeature: function (feature, my_Layer) {
+						        my_Layer.bindPopup('<b><center>DWELLING INFORMATION</b>'+ '<center> Coordinates:' +feature.geometry.coordinates + '<center> Primary Address:' +feature.properties.priadd + '<center> Secondary Address: ' + feature.properties.secadd + '<center> Tertiery Address: ' + feature.properties.teradd);
+					  },
+            pointToLayer: function (feature, latlng) {
+            
+			     return L.circleMarker(latlng, {radius: 4,
+                    fillColor: "#b3b3cc",
+                    color: "#000",
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 1}
+          );
+            //return L.marker(latlng);
+        }
+        }).addTo(dwellings).addTo(POI);
+    }
+
+
+    //Declare Icons
+    //Load Hazards GeoJson from Geoserver
+    var dangericon =L.icon({
+        iconUrl: 'images/exclamay.svg',
+        iconSize: [20,20]
+    });
+    var geoJsonUrl1 ="http://url/geoserver/mapchasers/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=mapchasers:hazards&outputFormat=text/javascript&format_options=callback:JsonHazard";
+    $.ajax({
+        jsonp : false,
+        url: geoJsonUrl1,
+        dataType: 'jsonp',
+        jsonpCallback: 'JsonHazard',
+        success: handleJson1
+    });
+
+    function handleJson1(data) {
+        hazards = L.geoJson(data, {
+            onEachFeature: function (feature, my_Layer1) {
+						        my_Layer1.bindPopup('<b><center>HAZARD INFORMATION</b>' + '<center> Coordinates: ' +feature.geometry.coordinates + '<center> Type of Hazard: ' + feature.properties.ecplus_fie);
+					  },
+            pointToLayer: function (feature, latlng) {
+            //return L.circleMarker(latlng, geojsonMarkerOptions);
+            return L.marker(latlng, {icon: dangericon});
+        }
+        }).addTo(hazards).addTo(hazardcluster);
+    }
+    //Declare Shop Icon
+    var supermarketicon = L.icon({
+        iconUrl: 'images/shopping-cart-button.png',
+        iconSize: [20,20]
+    });
+
+    //Load shops from Geoserver
+    var shops = L.geoJson();
+    var geoJsonShopUrl = "http://url/geoserver/mapchasers/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=mapchasers:shops&outputFormat=text/javascript&format_options=callback:JsonShop";
+    $.ajax({
+        jsonp : false,
+        url: geoJsonShopUrl,
+        dataType: 'jsonp',
+        jsonpCallback: 'JsonShop',
+        success: handleJsonShop
+    });
+
+    function handleJsonShop(data) {
+    L.geoJson(data, {
+            onEachFeature: function (feature, my_Layershop) {
+						        my_Layershop.bindPopup('<b><center>SHOP INFORMATION</b>' + '<center> Coordinates: ' +feature.geometry.coordinates + '<center> Primary Address:' +feature.properties.priadd + '<center> Secondary Address: ' + feature.properties.secadd + '<center> Tertiery Address: ' + feature.properties.teradd);
+					  },
+            pointToLayer: function (feature, latlng) {
+            //return L.circleMarker(latlng, geojsonMarkerOptions);
+
+            return L.marker(latlng, {icon: supermarketicon});
+        }
+        }).addTo(shops).addTo(POI);
+    }
+
+    var schoolicon =L.icon({
+        iconUrl: 'images/school1.png',
+        iconSize: [20,20]
+    });
+    //Load schools from Geoserver
+    var schools = new L.geoJson();
+    var geoJsonShopUrl6 = "http://url/geoserver/mapchasers/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=mapchasers:schoolfinal&outputFormat=text/javascript&format_options=callback:JsonSchool";
+    $.ajax({
+        jsonp : false,
+        url: geoJsonShopUrl6,
+        dataType: 'jsonp',
+        jsonpCallback: 'JsonSchool',
+        success: handleJsonSchool
+    });
+
+    function handleJsonSchool(data) {
+    L.geoJson(data, {
+            onEachFeature: function (feature, my_Layerschool) {
+						        my_Layerschool.bindPopup('<b><center>SCHOOL INFORMATION</b>' + '<center> Coordinates: ' +feature.geometry.coordinates + '<center> Primary Address:' +feature.properties.priadd + '<center> Secondary Address: ' + feature.properties.secadd + '<center> Tertiery Address: ' + feature.properties.teradd);
+					  },
+            pointToLayer: function (feature, latlng) {
+            //return L.circleMarker(latlng);
+
+            return L.marker(latlng, {icon: schoolicon});
+        }
+        }).addTo(schools).addTo(POI);
+    }
+
+    //Load barbers from Geoserver
+    var barbericon =L.icon({
+        iconUrl: 'images/barber.png',
+        iconSize: [20,20]
+    });
+    var barbers = new L.geoJson();
+    var geoJsonShopUrl7 = "http://url/geoserver/mapchasers/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=mapchasers:barbers&outputFormat=text/javascript&format_options=callback:JsonBarber";
+    $.ajax({
+        jsonp : false,
+        url: geoJsonShopUrl7,
+        dataType: 'jsonp',
+        jsonpCallback: 'JsonBarber',
+        success: handleJsonBarber
+    });
+
+    function handleJsonBarber(data) {
+    L.geoJson(data, {
+            onEachFeature: function (feature, my_Layerbarber) {
+						        my_Layerbarber.bindPopup('<b><center>BARBER INFORMATION</b>' + '<center> Coordinates: ' +feature.geometry.coordinates + '<center> Primary Address:' +feature.properties.priadd + '<center> Secondary Address: ' + feature.properties.secadd + '<center> Tertiery Address: ' + feature.properties.teradd);
+					  },
+            pointToLayer: function (feature, latlng) {
+            //return L.circleMarker(latlng);
+
+            return L.marker(latlng, {icon: barbericon});
+        }
+        }).addTo(barbers).addTo(POI);
+    }
+
+    roads.addTo(map);
+    dwellings.addTo(map);
+    shops.addTo(map);
+    schools.addTo(map);
+    barbers.addTo(map);
+	map.addLayer(hazardcluster)
+
+	map.on('zoomend', function() {
+	if (map.getZoom() > 15 && map.hasLayer(dwellings) == false) {
+		map.addLayer(roads);
+		map.addLayer(dwellings);
+		map.addLayer(shops);
+		map.addLayer(schools);
+		map.addLayer(barbers);
+	}
+	if (map.getZoom() < 15 && map.hasLayer(dwellings)) {
+		map.removeLayer(roads);
+		map.removeLayer(dwellings);
+		map.removeLayer(shops);
+		map.removeLayer(schools);
+		map.removeLayer(barbers);
+	}
+	});
+
+    var basemaps = {
+        "Street Map" : OpenStreetMap,
+        "Grayscale" : OpenStreetMap_BlackAndWhite,
+        "Terrain Map" : OpenTopoMap,
+        "Satellite Imagery": Esri_WorldImagery
+    };
+    var overlaymaps = {
+        "Hazards" : hazardcluster,
+        "Dwellings" : dwellings,
+        //"Roads": roads,
+        "Shops": shops,
+        "Schools": schools,
+        "Barbers": barbers
+    };
+
+    L.control.layers(basemaps, overlaymaps).addTo(map);
+
+    L.closePopupOnClick = true;
+
+	  //This is another backup search function
+    var searchControl = new L.Control.Search({
+        layer: POI,
+        propertyName: 'priadd',
+		circleLocation: true,
+		zoom: 19,
+		textPlaceholder: 'Primary Address (e.g CD154)    ',
+        });
+
+        searchControl.on('search_locationfound', function (e) {
+
+            e.layer.setStyle({
+            fillColor: '#3f0',
+            color: '#0f0'
+            });
+        if (e.layer._popup) e.layer.openPopup();
+
+        }).on('search_collapsed', function (e) {
+
+            statesLayer.eachLayer(function (layer) { //restore feature color
+            statesLayer.resetStyle(layer);
+                });
+            });
+
+    map.addControl(searchControl); //inizialize search control
+
+
+		var searchControl2 = new L.Control.Search({
+        layer: POI,
+        propertyName: 'secadd',
+		circleLocation: true,
+		zoom: 19,
+		textPlaceholder: 'Secondary Address (e.g 5000511)',
+        });
+
+        searchControl2.on('search_locationfound', function (e) {
+
+            e.layer.setStyle({
+            fillColor: '#3f0',
+            color: '#0f0'
+            });
+        if (e.layer._popup) e.layer.openPopup();
+
+        }).on('search_collapsed', function (e) {
+
+            statesLayer.eachLayer(function (layer) { //restore feature color
+            statesLayer.resetStyle(layer);
+                });
+            });
+
+    map.addControl(searchControl2);
+
+		var searchControl3 = new L.Control.Search({
+        layer: POI,
+        propertyName: 'teradd',
+		circleLocation: true,
+		zoom: 19,
+		textPlaceholder: 'Tertiery Address (e.g AL641)   '
+        });
+
+        searchControl3.on('search_locationfound', function (e) {
+
+            e.layer.setStyle({
+            fillColor: '#3f0',
+            color: '#0f0'
+            });
+        if (e.layer._popup) e.layer.openPopup();
+
+        }).on('search_collapsed', function (e) {
+
+            statesLayer.eachLayer(function (layer) { //restore feature color
+            statesLayer.resetStyle(layer);
+                });
+            });
+
+    map.addControl(searchControl3);
+
+
+    function showCoordinates(e) {
+        alert(e.latlng);
+    }
+
+    function addHazard(e) {
+		
+        document.getElementById('lat').value = e.latlng.lat;
+        document.getElementById('lng').value = e.latlng.lng;
+		sidebar.show();
+
+    }
+	
+	//addd hazard side bar
+
+        var sidebar = L.control.sidebar('sidebar', {
+            position: 'right',
+			closeButton: true
+        });
+        map.addControl(sidebar);
+        sidebar.on('show', function () {
+            console.log('Sidebar will be visible.');
+        });
+
+        sidebar.on('shown', function () {
+            console.log('Sidebar is visible.');
+        });
+
+        sidebar.on('hide', function () {
+            console.log('Sidebar will be hidden.');
+        });
+
+        sidebar.on('hidden', function () {
+            console.log('Sidebar is hidden.');
+        });
+
+        L.DomEvent.on(sidebar.getCloseButton(), 'click', function () {
+            console.log('Close button clicked.');
+        });
+
+  </script>
+</body>
+</html>
